@@ -1,6 +1,6 @@
 import ece from 'http_ece';
 
-export function encrypt(userPublicKey, userAuth, payload, contentEncoding) {
+export async function encrypt(userPublicKey, userAuth, payload, contentEncoding) {
   if (!userPublicKey) {
     throw new Error('No user public key provided for encryption.');
   }
@@ -34,15 +34,28 @@ export function encrypt(userPublicKey, userAuth, payload, contentEncoding) {
     payload = Buffer.from(payload);
   }
 
-  const localCurve = crypto.createECDH('prime256v1');
-  const localPublicKey = localCurve.generateKeys();
+  // Generate ECDH key pair using Web Crypto API
+  const keyPair = await (globalThis.crypto || window.crypto).subtle.generateKey(
+    {
+      name: 'ECDH',
+      namedCurve: 'P-256',
+    },
+    true,
+    ['deriveKey', 'deriveBits']
+  );
+  // Export the public key in uncompressed raw format (04 || X || Y)
+  const localPublicKeyRaw = await (globalThis.crypto || window.crypto).subtle.exportKey('raw', keyPair.publicKey);
+  const localPublicKey = Buffer.from(new Uint8Array(localPublicKeyRaw)).toString('base64url');
 
-  const salt = crypto.randomBytes(16).toString('base64url');
+  // Generate 16 random bytes for salt
+  const saltArray = new Uint8Array(16);
+  (globalThis.crypto || window.crypto).getRandomValues(saltArray);
+  const salt = Buffer.from(saltArray).toString('base64url');
 
   const cipherText = ece.encrypt(payload, {
     version: contentEncoding,
     dh: userPublicKey,
-    privateKey: localCurve,
+    privateKey: keyPair, // You may need to adapt ece.encrypt to accept CryptoKey
     salt: salt,
     authSecret: userAuth
   });
