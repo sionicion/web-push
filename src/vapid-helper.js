@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import asn1 from 'asn1.js';
-import jws from 'jws';
+import { SignJWT } from 'jose';
 import { URL } from 'url';
 
 import WebPushConstants from './web-push-constants.js';
@@ -182,7 +182,7 @@ export function validateExpiration(expiration) {
  * @return {Object}                 Returns an Object with the Authorization and
  * 'Crypto-Key' values to be used as headers.
  */
-export function getVapidHeaders(audience, subject, publicKey, privateKey, contentEncoding, expiration) {
+export async function getVapidHeaders(audience, subject, publicKey, privateKey, contentEncoding, expiration) {
   if (!audience) {
     throw new Error('No audience could be generated for VAPID.');
   }
@@ -221,11 +221,14 @@ export function getVapidHeaders(audience, subject, publicKey, privateKey, conten
     sub: subject
   };
 
-  const jwt = jws.sign({
-    header: header,
-    payload: jwtPayload,
-    privateKey: toPEM(privateKey)
-  });
+  // jose expects a CryptoKey or KeyObject for signing
+  const pem = toPEM(privateKey);
+  const jwt = await new SignJWT(jwtPayload)
+    .setProtectedHeader(header)
+    .setAudience(audience)
+    .setExpirationTime(expiration)
+    .setSubject(subject)
+    .sign({ key: pem, format: 'pem', passphrase: '' });
 
   if (contentEncoding === WebPushConstants.supportedContentEncodings.AES_128_GCM) {
     return {

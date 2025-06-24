@@ -59,8 +59,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     let contentEncoding = webPushConstants.supportedContentEncodings.AES_128_GCM;
     let urgency = webPushConstants.supportedUrgency.NORMAL;
     let topic;
-    let proxy;
-    let agent;
     let timeout;
 
     if (options) {
@@ -71,8 +69,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
         'contentEncoding',
         'urgency',
         'topic',
-        'proxy',
-        'agent',
         'timeout'
       ];
       const optionKeys = Object.keys(options);
@@ -138,27 +134,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
           throw new Error('use maximum of 32 characters from the URL or filename-safe Base64 characters set');
         }
         topic = options.topic;
-      }
-
-      if (options.proxy) {
-        if (typeof options.proxy === 'string'
-          || typeof options.proxy.host === 'string') {
-          proxy = options.proxy;
-        } else {
-          console.warn('Attempt to use proxy option, but invalid type it should be a string or proxy options object.');
-        }
-      }
-
-      if (options.agent) {
-        if (options.agent instanceof https.Agent) {
-          if (proxy) {
-            console.warn('Agent option will be ignored because proxy option is defined.');
-          }
-
-          agent = options.agent;
-        } else {
-          console.warn('Wrong type for the agent option, it should be an instance of https.Agent.');
-        }
       }
 
       if (typeof options.timeout === 'number') {
@@ -235,14 +210,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     requestDetails.body = requestPayload;
     requestDetails.endpoint = subscription.endpoint;
 
-    if (proxy) {
-      requestDetails.proxy = proxy;
-    }
-
-    if (agent) {
-      requestDetails.agent = agent;
-    }
-
     if (timeout) {
       requestDetails.timeout = timeout;
     }
@@ -270,15 +237,6 @@ WebPushLib.prototype.sendNotification = function(subscription, payload, options)
 
       if (requestDetails.timeout) {
         httpsOptions.timeout = requestDetails.timeout;
-      }
-
-      if (requestDetails.agent) {
-        httpsOptions.agent = requestDetails.agent;
-      }
-
-      if (requestDetails.proxy) {
-        const { HttpsProxyAgent } = require('https-proxy-agent');
-        httpsOptions.agent = new HttpsProxyAgent(requestDetails.proxy);
       }
 
       const pushRequest = https.request(httpsOptions, function(pushResponse) {
