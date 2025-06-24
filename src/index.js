@@ -7,7 +7,7 @@ import WebPushConstants from './web-push-constants.js';
 const webPush = new WebPushLib();
 
 const { supportedContentEncodings } = WebPushConstants;
-const { setGCMAPIKey, setVapidDetails, generateRequestDetails } = webPush;
+const { setVapidDetails, generateRequestDetails } = webPush;
 const sendNotification = webPush.sendNotification.bind(webPush);
 
 export {
@@ -16,7 +16,6 @@ export {
   encrypt,
   getVapidHeaders,
   generateVAPIDKeys,
-  setGCMAPIKey,
   setVapidDetails,
   generateRequestDetails,
   sendNotification
