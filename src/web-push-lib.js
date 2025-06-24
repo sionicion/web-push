@@ -1,55 +1,20 @@
-'use strict';
+import url from 'url';
+import https from 'https';
 
-const url = require('url');
-const https = require('https');
+import WebPushError from './web-push-error.js';
+import * as vapidHelper from './vapid-helper.js';
+import * as encryptionHelper from './encryption-helper.js';
+import webPushConstants from './web-push-constants.js';
+import * as urlBase64Helper from './urlsafe-base64-helper.js';
 
-const WebPushError = require('./web-push-error.js');
-const vapidHelper = require('./vapid-helper.js');
-const encryptionHelper = require('./encryption-helper.js');
-const webPushConstants = require('./web-push-constants.js');
-const urlBase64Helper = require('./urlsafe-base64-helper');
-
-// Default TTL is four weeks.
 const DEFAULT_TTL = 2419200;
 
-let gcmAPIKey = '';
 let vapidDetails;
 
-function WebPushLib() {
+export function WebPushLib() {
 
 }
 
-/**
- * When sending messages to a GCM endpoint you need to set the GCM API key
- * by either calling setGMAPIKey() or passing in the API key as an option
- * to sendNotification().
- * @param  {string} apiKey The API key to send with the GCM request.
- */
-WebPushLib.prototype.setGCMAPIKey = function(apiKey) {
-  if (apiKey === null) {
-    gcmAPIKey = null;
-    return;
-  }
-
-  if (typeof apiKey === 'undefined'
-  || typeof apiKey !== 'string'
-  || apiKey.length === 0) {
-    throw new Error('The GCM API Key should be a non-empty string or null.');
-  }
-
-  gcmAPIKey = apiKey;
-};
-
-/**
- * When making requests where you want to define VAPID details, call this
- * method before sendNotification() or pass in the details and options to
- * sendNotification.
- * @param  {string} subject    This must be either a URL or a 'mailto:'
- * address. For example: 'https://my-site.com/contact' or
- * 'mailto: contact@my-site.com'
- * @param  {string} publicKey  The public VAPID key, a URL safe, base64 encoded string
- * @param  {string} privateKey The private VAPID key, a URL safe, base64 encoded string.
- */
 WebPushLib.prototype.setVapidDetails = function(subject, publicKey, privateKey) {
     if (arguments.length === 1 && arguments[0] === null) {
       vapidDetails = null;
@@ -67,21 +32,6 @@ WebPushLib.prototype.setVapidDetails = function(subject, publicKey, privateKey) 
     };
   };
 
-  /**
-   * To get the details of a request to trigger a push message, without sending
-   * a push notification call this method.
-   *
-   * This method will throw an error if there is an issue with the input.
-   * @param  {PushSubscription} subscription The PushSubscription you wish to
-   * send the notification to.
-   * @param  {string|Buffer} [payload]       The payload you wish to send to the
-   * the user.
-   * @param  {Object} [options]              Options for the GCM API key and
-   * vapid keys can be passed in if they are unique for each notification you
-   * wish to send.
-   * @return {Object}                       This method returns an Object which
-   * contains 'endpoint', 'method', 'headers' and 'payload'.
-   */
 WebPushLib.prototype.generateRequestDetails = function(subscription, payload, options) {
     if (!subscription || !subscription.endpoint) {
       throw new Error('You must pass in a subscription with at least '
@@ -95,7 +45,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     }
 
     if (payload) {
-      // Validate the subscription keys
       if (typeof subscription !== 'object' || !subscription.keys
       || !subscription.keys.p256dh
       || !subscription.keys.auth) {
@@ -104,7 +53,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
       }
     }
 
-    let currentGCMAPIKey = gcmAPIKey;
     let currentVapidDetails = vapidDetails;
     let timeToLive = DEFAULT_TTL;
     let extraHeaders = {};
@@ -118,7 +66,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     if (options) {
       const validOptionKeys = [
         'headers',
-        'gcmAPIKey',
         'vapidDetails',
         'TTL',
         'contentEncoding',
@@ -152,11 +99,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
         }
       }
 
-      if (options.gcmAPIKey) {
-        currentGCMAPIKey = options.gcmAPIKey;
-      }
-
-      // Falsy values are allowed here so one can skip Vapid `else if` below and use FCM
       if (options.vapidDetails !== undefined) {
         currentVapidDetails = options.vapidDetails;
       }
@@ -259,18 +201,7 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
       requestDetails.headers['Content-Length'] = 0;
     }
 
-    const isGCM = subscription.endpoint.startsWith('https://android.googleapis.com/gcm/send');
-    const isFCM = subscription.endpoint.startsWith('https://fcm.googleapis.com/fcm/send');
-    // VAPID isn't supported by GCM hence the if, else if.
-    if (isGCM) {
-      if (!currentGCMAPIKey) {
-        console.warn('Attempt to send push notification to GCM endpoint, '
-        + 'but no GCM key is defined. Please use setGCMApiKey() or add '
-        + '\'gcmAPIKey\' as an option.');
-      } else {
-        requestDetails.headers.Authorization = 'key=' + currentGCMAPIKey;
-      }
-    } else if (currentVapidDetails) {
+    if (currentVapidDetails) {
       const parsedUrl = url.parse(subscription.endpoint);
       const audience = parsedUrl.protocol + '//'
       + parsedUrl.host;
@@ -293,8 +224,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
           requestDetails.headers['Crypto-Key'] = vapidHeaders['Crypto-Key'];
         }
       }
-    } else if (isFCM && currentGCMAPIKey) {
-      requestDetails.headers.Authorization = 'key=' + currentGCMAPIKey;
     }
 
     requestDetails.headers.Urgency = urgency;
@@ -321,20 +250,6 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     return requestDetails;
   };
 
-/**
- * To send a push notification call this method with a subscription, optional
- * payload and any options.
- * @param  {PushSubscription} subscription The PushSubscription you wish to
- * send the notification to.
- * @param  {string|Buffer} [payload]       The payload you wish to send to the
- * the user.
- * @param  {Object} [options]              Options for the GCM API key and
- * vapid keys can be passed in if they are unique for each notification you
- * wish to send.
- * @return {Promise}                       This method returns a Promise which
- * resolves if the sending of the notification was successful, otherwise it
- * rejects.
- */
 WebPushLib.prototype.sendNotification = function(subscription, payload, options) {
     let requestDetails;
     try {
@@ -362,7 +277,7 @@ WebPushLib.prototype.sendNotification = function(subscription, payload, options)
       }
 
       if (requestDetails.proxy) {
-        const { HttpsProxyAgent } = require('https-proxy-agent'); // eslint-disable-line global-require
+        const { HttpsProxyAgent } = require('https-proxy-agent');
         httpsOptions.agent = new HttpsProxyAgent(requestDetails.proxy);
       }
 
@@ -408,6 +323,4 @@ WebPushLib.prototype.sendNotification = function(subscription, payload, options)
 
       pushRequest.end();
     });
-  };
-
-module.exports = WebPushLib;
+};
