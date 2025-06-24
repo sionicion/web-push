@@ -1,6 +1,3 @@
-import url from 'url';
-import https from 'https';
-
 import WebPushError from './web-push-error.js';
 import * as vapidHelper from './vapid-helper.js';
 import * as encryptionHelper from './encryption-helper.js';
@@ -177,9 +174,9 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     }
 
     if (currentVapidDetails) {
-      const parsedUrl = url.parse(subscription.endpoint);
-      const audience = parsedUrl.protocol + '//'
-      + parsedUrl.host;
+      // Use standard URL class instead of url.parse
+      const parsedUrl = new URL(subscription.endpoint);
+      const audience = parsedUrl.protocol + '//' + parsedUrl.host;
 
       const vapidHeaders = vapidHelper.getVapidHeaders(
         audience,
@@ -225,60 +222,43 @@ WebPushLib.prototype.sendNotification = function(subscription, payload, options)
       return Promise.reject(err);
     }
 
-    return new Promise(function(resolve, reject) {
-      const httpsOptions = {};
-      const urlParts = url.parse(requestDetails.endpoint);
-      httpsOptions.hostname = urlParts.hostname;
-      httpsOptions.port = urlParts.port;
-      httpsOptions.path = urlParts.path;
+    // Use fetch instead of https.request
+    const fetch = globalThis.fetch || (typeof window !== 'undefined' && window.fetch);
+    if (!fetch) {
+      return Promise.reject(new Error('Fetch API is not available in this environment.'));
+    }
 
-      httpsOptions.headers = requestDetails.headers;
-      httpsOptions.method = requestDetails.method;
+    const fetchOptions = {
+      method: requestDetails.method,
+      headers: requestDetails.headers,
+      body: requestDetails.body || undefined,
+      // Note: fetch timeout is not natively supported; workaround below
+    };
 
-      if (requestDetails.timeout) {
-        httpsOptions.timeout = requestDetails.timeout;
+    let fetchPromise = fetch(requestDetails.endpoint, fetchOptions).then(async (response) => {
+      const responseText = await response.text();
+      if (!response.ok) {
+        throw new WebPushError(
+          'Received unexpected response code',
+          response.status,
+          response.headers,
+          responseText,
+          requestDetails.endpoint
+        );
       }
-
-      const pushRequest = https.request(httpsOptions, function(pushResponse) {
-        let responseText = '';
-
-        pushResponse.on('data', function(chunk) {
-          responseText += chunk;
-        });
-
-        pushResponse.on('end', function() {
-          if (pushResponse.statusCode < 200 || pushResponse.statusCode > 299) {
-            reject(new WebPushError(
-              'Received unexpected response code',
-              pushResponse.statusCode,
-              pushResponse.headers,
-              responseText,
-              requestDetails.endpoint
-            ));
-          } else {
-            resolve({
-              statusCode: pushResponse.statusCode,
-              body: responseText,
-              headers: pushResponse.headers
-            });
-          }
-        });
-      });
-
-      if (requestDetails.timeout) {
-        pushRequest.on('timeout', function() {
-          pushRequest.destroy(new Error('Socket timeout'));
-        });
-      }
-
-      pushRequest.on('error', function(e) {
-        reject(e);
-      });
-
-      if (requestDetails.body) {
-        pushRequest.write(requestDetails.body);
-      }
-
-      pushRequest.end();
+      return {
+        statusCode: response.status,
+        body: responseText,
+        headers: response.headers
+      };
     });
+
+    // Handle timeout if specified
+    if (requestDetails.timeout) {
+      return Promise.race([
+        fetchPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Socket timeout')), requestDetails.timeout))
+      ]);
+    }
+    return fetchPromise;
 };
