@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import ece from 'http_ece';
 
 export function encrypt(userPublicKey, userAuth, payload, contentEncoding) {
