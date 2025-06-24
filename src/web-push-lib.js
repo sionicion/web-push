@@ -48,6 +48,12 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
         throw new Error('To send a message with a payload, the '
         + 'subscription must have \'auth\' and \'p256dh\' keys.');
       }
+      if (typeof subscription.keys.p256dh !== 'string' || subscription.keys.p256dh.length === 0) {
+        throw new Error('The subscription.keys.p256dh value must be a non-empty string.');
+      }
+      if (typeof subscription.keys.auth !== 'string' || subscription.keys.auth.length === 0) {
+        throw new Error('The subscription.keys.auth value must be a non-empty string.');
+      }
     }
 
     let currentVapidDetails = vapidDetails;
