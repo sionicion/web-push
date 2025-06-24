@@ -34,16 +34,29 @@ function toPEM(key) {
   });
 }
 
-export function generateVAPIDKeys() {
-  const curve = crypto.createECDH('prime256v1');
-  curve.generateKeys();
+export async function generateVAPIDKeys() {
+  // Generate ECDSA key pair using Web Crypto API
+  const keyPair = await (globalThis.crypto || window.crypto).subtle.generateKey(
+    {
+      name: 'ECDSA',
+      namedCurve: 'P-256',
+    },
+    true,
+    ['sign', 'verify']
+  );
 
-  let publicKeyBuffer = curve.getPublicKey();
-  let privateKeyBuffer = curve.getPrivateKey();
+  // Export the public key in uncompressed raw format (04 || X || Y)
+  const publicKeyRaw = await (globalThis.crypto || window.crypto).subtle.exportKey('raw', keyPair.publicKey);
+  // Export the private key in pkcs8 format, then extract the raw 32 bytes
+  const privateKeyPkcs8 = new Uint8Array(await (globalThis.crypto || window.crypto).subtle.exportKey('pkcs8', keyPair.privateKey));
 
-  // Occassionally the keys will not be padded to the correct lengh resulting
-  // in errors, hence this padding.
-  // See https://github.com/web-push-libs/web-push/issues/295 for history.
+  // Extract the private key bytes from PKCS8 (last 32 bytes)
+  const privateKeyRaw = privateKeyPkcs8.slice(-32);
+
+  // Padding is not needed as Web Crypto always outputs correct length, but for compatibility:
+  let privateKeyBuffer = Buffer.from(privateKeyRaw);
+  let publicKeyBuffer = Buffer.from(new Uint8Array(publicKeyRaw));
+
   if (privateKeyBuffer.length < 32) {
     const padding = Buffer.alloc(32 - privateKeyBuffer.length);
     padding.fill(0);
