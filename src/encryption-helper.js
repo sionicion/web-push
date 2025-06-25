@@ -9,7 +9,8 @@ export async function encrypt(userPublicKey, userAuth, payload, contentEncoding)
     throw new Error('The subscription p256dh value must be a string.');
   }
 
-  if (Buffer.from(userPublicKey, 'base64url').length !== 65) {
+  const userPublicKeyBytes = Buffer.from(userPublicKey, 'base64url');
+  if (userPublicKeyBytes.length !== 65) {
     throw new Error('The subscription p256dh value should be 65 bytes long.');
   }
 
@@ -21,9 +22,9 @@ export async function encrypt(userPublicKey, userAuth, payload, contentEncoding)
     throw new Error('The subscription auth key must be a string.');
   }
 
-  if (Buffer.from(userAuth, 'base64url').length < 16) {
-    throw new Error('The subscription auth key should be at least 16 '
-    + 'bytes long');
+  const userAuthBytes = Buffer.from(userAuth, 'base64url');
+  if (userAuthBytes.length < 16) {
+    throw new Error('The subscription auth key should be at least 16 bytes long');
   }
 
   if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) {
@@ -34,6 +35,15 @@ export async function encrypt(userPublicKey, userAuth, payload, contentEncoding)
     payload = Buffer.from(payload);
   }
 
+  // Import recipient's public key as CryptoKey
+  const importedUserPublicKey = await (globalThis.crypto || window.crypto).subtle.importKey(
+    'raw',
+    userPublicKeyBytes,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    []
+  );
+
   // Generate ECDH key pair using Web Crypto API
   const keyPair = await (globalThis.crypto || window.crypto).subtle.generateKey(
     {
@@ -43,26 +53,28 @@ export async function encrypt(userPublicKey, userAuth, payload, contentEncoding)
     true,
     ['deriveKey', 'deriveBits']
   );
+
   // Export the public key in uncompressed raw format (04 || X || Y)
-  const localPublicKeyRaw = await (globalThis.crypto || window.crypto).subtle.exportKey('raw', keyPair.publicKey);
-  const localPublicKey = Buffer.from(new Uint8Array(localPublicKeyRaw)).toString('base64url');
+  const senderPublicKeyRaw = await (globalThis.crypto || window.crypto).subtle.exportKey('raw', keyPair.publicKey);
+  const senderPublicKeyB64 = Buffer.from(new Uint8Array(senderPublicKeyRaw)).toString('base64url');
 
   // Generate 16 random bytes for salt
   const saltArray = new Uint8Array(16);
   (globalThis.crypto || window.crypto).getRandomValues(saltArray);
-  const salt = Buffer.from(saltArray).toString('base64url');
 
-  const cipherText = ece.encrypt(payload, {
+  // Encrypt using ece with CryptoKey objects and Uint8Array
+  const cipherText = await ece.encrypt(payload, {
     version: contentEncoding,
-    dh: userPublicKey,
-    privateKey: keyPair, // You may need to adapt ece.encrypt to accept CryptoKey
-    salt: salt,
-    authSecret: userAuth
+    dh: importedUserPublicKey, // recipient's public key (CryptoKey)
+    privateKey: keyPair.privateKey, // your private key (CryptoKey)
+    senderPublicKey: keyPair.publicKey, // your public key (CryptoKey)
+    salt: saltArray, // Uint8Array
+    authSecret: userAuthBytes // Uint8Array
   });
 
   return {
-    localPublicKey: localPublicKey,
-    salt: salt,
+    localPublicKey: senderPublicKeyB64,
+    salt: Buffer.from(saltArray).toString('base64url'),
     cipherText: cipherText
   };
 }
