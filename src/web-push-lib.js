@@ -160,6 +160,7 @@ WebPushLib.prototype.generateRequestDetails = async function(subscription, paylo
     let requestPayload = null;
 
     if (payload) {
+      // The encrypt function now returns localPublicKey as a base64url string and does not return a Node.js ECDH object
       const encrypted = await encryptionHelper
         .encrypt(subscription.keys.p256dh, subscription.keys.auth, payload, contentEncoding);
 
@@ -171,7 +172,8 @@ WebPushLib.prototype.generateRequestDetails = async function(subscription, paylo
       } else if (contentEncoding === webPushConstants.supportedContentEncodings.AES_GCM) {
         requestDetails.headers['Content-Encoding'] = webPushConstants.supportedContentEncodings.AES_GCM;
         requestDetails.headers.Encryption = 'salt=' + encrypted.salt;
-        requestDetails.headers['Crypto-Key'] = 'dh=' + encrypted.localPublicKey.toString('base64url');
+        // localPublicKey is already base64url encoded
+        requestDetails.headers['Crypto-Key'] = 'dh=' + encrypted.localPublicKey;
       }
 
       requestPayload = encrypted.cipherText;
