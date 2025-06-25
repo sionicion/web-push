@@ -1,4 +1,4 @@
-import { encrypt } from "../ece";
+import * as ece from "../ece";
 
 export async function encrypt(userPublicKey, userAuth, payload, contentEncoding) {
   if (!userPublicKey) {
