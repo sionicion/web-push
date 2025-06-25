@@ -29,7 +29,7 @@ WebPushLib.prototype.setVapidDetails = function(subject, publicKey, privateKey) 
     };
   };
 
-WebPushLib.prototype.generateRequestDetails = function(subscription, payload, options) {
+WebPushLib.prototype.generateRequestDetails = async function(subscription, payload, options) {
     if (!subscription || !subscription.endpoint) {
       throw new Error('You must pass in a subscription with at least '
       + 'an endpoint.');
@@ -160,7 +160,7 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     let requestPayload = null;
 
     if (payload) {
-      const encrypted = encryptionHelper
+      const encrypted = await encryptionHelper
         .encrypt(subscription.keys.p256dh, subscription.keys.auth, payload, contentEncoding);
 
       requestDetails.headers['Content-Length'] = encrypted.cipherText.length;
@@ -184,7 +184,7 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
       const parsedUrl = new URL(subscription.endpoint);
       const audience = parsedUrl.protocol + '//' + parsedUrl.host;
 
-      const vapidHeaders = vapidHelper.getVapidHeaders(
+      const vapidHeaders = await vapidHelper.getVapidHeaders(
         audience,
         currentVapidDetails.subject,
         currentVapidDetails.publicKey,
@@ -220,10 +220,10 @@ WebPushLib.prototype.generateRequestDetails = function(subscription, payload, op
     return requestDetails;
   };
 
-WebPushLib.prototype.sendNotification = function(subscription, payload, options) {
+WebPushLib.prototype.sendNotification = async function(subscription, payload, options) {
     let requestDetails;
     try {
-      requestDetails = this.generateRequestDetails(subscription, payload, options);
+      requestDetails = await this.generateRequestDetails(subscription, payload, options);
     } catch (err) {
       return Promise.reject(err);
     }
