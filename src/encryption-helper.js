@@ -1,6 +1,6 @@
 import * as ece from "../ece";
 
-export async function encrypt(userPublicKey, userAuth, payload, contentEncoding) {
+export async function encrypt(userPublicKey, userAuth, payload, contentEncoding, senderPublicKeyB64, senderPrivateKeyB64) {
   if (!userPublicKey) {
     throw new Error('No user public key provided for encryption.');
   }
@@ -44,19 +44,23 @@ export async function encrypt(userPublicKey, userAuth, payload, contentEncoding)
     []
   );
 
-  // Generate ECDH key pair using Web Crypto API
-  const keyPair = await (globalThis.crypto || window.crypto).subtle.generateKey(
-    {
-      name: 'ECDH',
-      namedCurve: 'P-256',
-    },
+  // Import sender's public key and private key as CryptoKeys (VAPID keys)
+  const senderPublicKeyBytes = Buffer.from(senderPublicKeyB64, 'base64url');
+  const senderPrivateKeyBytes = Buffer.from(senderPrivateKeyB64, 'base64url');
+  const importedSenderPublicKey = await (globalThis.crypto || window.crypto).subtle.importKey(
+    'raw',
+    senderPublicKeyBytes,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    []
+  );
+  const importedSenderPrivateKey = await (globalThis.crypto || window.crypto).subtle.importKey(
+    'pkcs8',
+    senderPrivateKeyBytes,
+    { name: 'ECDH', namedCurve: 'P-256' },
     true,
     ['deriveKey', 'deriveBits']
   );
-
-  // Export the public key in uncompressed raw format (04 || X || Y)
-  const senderPublicKeyRaw = await (globalThis.crypto || window.crypto).subtle.exportKey('raw', keyPair.publicKey);
-  const senderPublicKeyB64 = Buffer.from(new Uint8Array(senderPublicKeyRaw)).toString('base64url');
 
   // Generate 16 random bytes for salt
   const saltArray = new Uint8Array(16);
@@ -66,8 +70,8 @@ export async function encrypt(userPublicKey, userAuth, payload, contentEncoding)
   const cipherText = await ece.encrypt(payload, {
     version: contentEncoding,
     dh: importedUserPublicKey, // recipient's public key (CryptoKey)
-    privateKey: keyPair.privateKey, // your private key (CryptoKey)
-    senderPublicKey: keyPair.publicKey, // your public key (CryptoKey)
+    privateKey: importedSenderPrivateKey, // sender's private key (CryptoKey)
+    senderPublicKey: importedSenderPublicKey, // sender's public key (CryptoKey)
     salt: saltArray, // Uint8Array
     authSecret: userAuthBytes // Uint8Array
   });
