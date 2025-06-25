@@ -6,7 +6,6 @@
   "exports": "./src/index.js",
   "dependencies": {
     "asn1.js": "^5.3.0",
-    "http_ece": "github:sionicion/encrypted-content-encoding",
     "jose": "^6.0.11"
   }
 }
